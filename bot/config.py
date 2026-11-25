@@ -37,7 +37,8 @@ class Settings:
             data_dir=Path(os.getenv("DATA_DIR", "./data")),
             assets_dir=Path(os.getenv("ASSETS_DIR", "./assets")),
             output_dir=Path(os.getenv("OUTPUT_DIR", "./work")),
-            whisper_model=os.getenv("WHISPER_MODEL", "base"),
+            # tiny is the practical default for 512 MB containers; set base on a larger host.
+            whisper_model=os.getenv("WHISPER_MODEL", "tiny"),
             max_video_mb=max(1, int(os.getenv("MAX_VIDEO_MB", "20"))),
             clip_seconds=max(15, min(60, int(os.getenv("CLIP_SECONDS", "38")))),
         )

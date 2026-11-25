@@ -9,6 +9,7 @@ from urllib.parse import urlparse
 log = logging.getLogger(__name__)
 SUPPORTED = {"youtube.com", "youtu.be", "twitch.tv", "kick.com"}
 
+
 def valid_media_url(url: str) -> bool:
     try:
         host = (urlparse(url).hostname or "").lower()
@@ -33,12 +34,13 @@ async def capture_chunk(url: str, destination: Path, seconds: int = 300):
         stream_url = next((f.get("url") for f in reversed(formats) if f.get("url") and f.get("vcodec") != "none"), None)
     if not stream_url:
         raise RuntimeError("No stream URL found")
-    proc = await asyncio.create_subprocess_exec("ffmpeg", "-y", "-i", stream_url, "-t", str(seconds), "-c", "copy", "-bsf:a", "aac_adtstoasc", str(destination), stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
+    # Stream-copy capture avoids a second full encode in this low-memory container.
+    proc = await asyncio.create_subprocess_exec("ffmpeg", "-y", "-threads", "1", "-i", stream_url, "-t", str(seconds), "-c", "copy", "-bsf:a", "aac_adtstoasc", str(destination), stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
     try:
         await asyncio.wait_for(proc.wait(), timeout=seconds + 120)
     except asyncio.TimeoutError:
         proc.kill(); await proc.wait()
-    if not destination.exists() or destination.stat().st_size < 100_000:
+    if proc.returncode != 0 or not destination.exists() or destination.stat().st_size < 100_000:
         raise RuntimeError("Live capture yielded no usable chunk")
     return info.get("title") or url
 

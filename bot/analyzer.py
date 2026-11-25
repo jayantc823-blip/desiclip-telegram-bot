@@ -20,13 +20,14 @@ async def media_duration(path: Path) -> float:
         return 0.0
 
 async def extract_audio(video: Path, wav: Path):
-    await _run("ffmpeg", "-y", "-i", str(video), "-vn", "-ac", "1", "-ar", "16000", str(wav))
+    # Audio-only decode: use a single thread (video encoder preset is not applicable).
+    await _run("ffmpeg", "-y", "-threads", "1", "-i", str(video), "-vn", "-ac", "1", "-ar", "16000", str(wav))
 
 async def _transcribe(wav: Path, model_name: str):
     def work():
         from faster_whisper import WhisperModel
-        model = WhisperModel(model_name, device="cpu", compute_type="int8")
-        segments, _info = model.transcribe(str(wav), vad_filter=True, word_timestamps=False)
+        model = WhisperModel(model_name, device="cpu", compute_type="int8", cpu_threads=1, num_workers=1)
+        segments, _info = model.transcribe(str(wav), vad_filter=True, word_timestamps=False, beam_size=1)
         return [{"start": float(s.start), "end": float(s.end), "text": s.text.strip()} for s in segments if s.text.strip()]
     try:
         return await asyncio.to_thread(work)

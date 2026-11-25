@@ -1,7 +1,6 @@
 """FFmpeg-based vertical clip renderer with captions, hook banner, narration and BGM."""
 import asyncio
 import logging
-import shlex
 import subprocess
 from pathlib import Path
 
@@ -35,10 +34,10 @@ async def render(source: Path, output: Path, workdir: Path, start: float, end: f
     duration = max(1.0, end - start)
     ass = workdir / "captions.ass"
     _write_ass(ass, script.get("caption", ""), duration)
-    # Quote paths for FFmpeg's filter syntax; escape drive/colon and apostrophes.
     sub = str(ass.resolve()).replace("\\", "/").replace(":", r"\:").replace("'", r"\'")
-    video_filter = f"scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,subtitles='{sub}',drawbox=x=0:y=0:w=iw:h=230:color=yellow@0.94:t=fill,drawtext=text='{script.get('hook','')[:60].replace(chr(39), '')}':fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:fontsize=58:fontcolor=black:x=(w-text_w)/2:y=70"
-    args = ["ffmpeg", "-y", "-ss", str(start), "-i", str(source)]
+    hook = script.get("hook", "")[:60].replace("'", "").replace(":", "\\:")
+    video_filter = f"scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,subtitles='{sub}',drawbox=x=0:y=0:w=iw:h=230:color=yellow@0.94:t=fill,drawtext=text='{hook}':fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:fontsize=58:fontcolor=black:x=(w-text_w)/2:y=70"
+    args = ["ffmpeg", "-y", "-threads", "1", "-filter_threads", "1", "-ss", str(start), "-i", str(source)]
     voice_index = bgm_index = avatar_index = 0
     if voice_path and voice_path.exists():
         args += ["-i", str(voice_path)]; voice_index = 1
@@ -62,6 +61,6 @@ async def render(source: Path, output: Path, workdir: Path, start: float, end: f
         args += ["-map", f"{bgm_index}:a"]
     else:
         args += ["-map", "0:a?"]
-    args += ["-t", str(duration), "-c:v", "libx264", "-preset", "veryfast", "-crf", "26", "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", str(output)]
+    args += ["-t", str(duration), "-c:v", "libx264", "-preset", "ultrafast", "-threads", "1", "-crf", "28", "-c:a", "aac", "-b:a", "96k", "-movflags", "+faststart", str(output)]
     await _run(args)
     return output

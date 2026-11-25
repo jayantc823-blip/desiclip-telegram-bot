@@ -1,7 +1,6 @@
 """Private Telegram UX, inline menus and the background clip-processing queue."""
 import asyncio
 import logging
-import os
 import shutil
 import tempfile
 from pathlib import Path
@@ -71,7 +70,7 @@ class BotService:
             ram = psutil.virtual_memory()
             ram_text = f"{ram.available / 1024**3:.1f} GB free RAM"
         except Exception:
-            ram_text = "RAM details unavailable (install psutil)"
+            ram_text = "RAM details unavailable"
         return f"Queue: {self.queue.qsize()} pending · {len(self.active)} processing\n{ram_text}\nDisk: {disk.free / 1024**3:.1f} GB free\nClips delivered: {self.db.clip_count()}"
 
     async def text(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -162,13 +161,17 @@ class BotService:
                     with output.open("rb") as video:
                         await app.bot.send_video(self.settings.allowed_chat_id, video=video, caption=caption[:1024], supports_streaming=True)
                     self.db.increment_clips()
+                    # Release each rendered file immediately after Telegram confirms delivery.
+                    output.unlink(missing_ok=True)
+                    if voice_path:
+                        Path(voice_path).unlink(missing_ok=True)
             except Exception as exc:
                 log.exception("Clip job failed")
                 try: await app.bot.send_message(self.settings.allowed_chat_id, f"⚠️ Clip job failed: {str(exc)[:500]}")
                 except Exception: pass
             finally:
                 self.active.discard(str(root))
-                # Clean the job's downloaded/uploaded source only after processing has stopped.
+                # Delete downloaded/uploaded source after every segment has been processed.
                 if job.get("owned") and source:
                     try: Path(source).unlink(missing_ok=True)
                     except OSError: pass
@@ -176,12 +179,12 @@ class BotService:
                 self.queue.task_done()
 
     async def _download(self, url: str, destination: Path):
-        proc = await asyncio.create_subprocess_exec("yt-dlp", "--no-playlist", "--max-filesize", f"{self.settings.max_video_mb}M", "-f", "bv*[height<=1080]+ba/b[height<=1080]", "--merge-output-format", "mp4", "-o", str(destination), url, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE)
+        fmt = "bv*[height<=720][ext=mp4]+ba[ext=m4a]/b[height<=720][ext=mp4]/b"
+        proc = await asyncio.create_subprocess_exec("yt-dlp", "--no-playlist", "--max-filesize", f"{self.settings.max_video_mb}M", "-f", fmt, "--merge-output-format", "mp4", "-o", str(destination), url, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE)
         _, err = await proc.communicate()
         if proc.returncode != 0:
             raise RuntimeError((err or b"yt-dlp download failed").decode(errors="replace")[-500:])
         if not destination.exists():
-            # yt-dlp may append a container extension to a template without one.
             matches = list(destination.parent.glob(destination.name + ".*"))
             if matches: matches[0].replace(destination)
         if not destination.exists(): raise RuntimeError("Download completed without an output file")
