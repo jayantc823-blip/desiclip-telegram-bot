@@ -1,0 +1,4 @@
+ffmpeg
+libgl1
+fonts-dejavu-core
+fonts-noto-core

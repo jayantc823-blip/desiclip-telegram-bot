@@ -1,0 +1,11 @@
+python-telegram-bot[job-queue]>=21.0,<23.0
+yt-dlp>=2024.10.22
+faster-whisper>=1.0.3
+edge-tts>=6.1.12
+google-genai>=1.0.0
+opencv-python-headless>=4.10.0
+numpy>=1.26.4
+soundfile>=0.12.1
+APScheduler>=3.10.4,<4
+gradio>=5.0
+python-dotenv>=1.0.1
